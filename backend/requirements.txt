@@ -1,0 +1,7 @@
+alembic
+fastapi
+psycopg2-binary
+python-decouple
+sqlalchemy
+uvicorn
+sqlmodel
