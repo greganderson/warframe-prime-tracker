@@ -21,6 +21,14 @@ def test_duplicate_relic_slots_are_valid(client):
     assert response.status_code == 201 and len(response.json()["columns"]) == 2
 
 
+def test_run_rewards_show_mastered_equipment(client):
+    client.patch("/api/v1/equipment/boar-prime", json={"mastered":True})
+    run = client.post("/api/v1/runs", json={"relic_ids":["lith-b4"]}).json()
+    barrel = next(reward for reward in run["columns"][0]["rewards"]
+                  if reward["id"] == "boar-prime-barrel")
+    assert barrel["mastered"] is True
+
+
 def test_inventory_cannot_be_negative(client):
     response = client.patch("/api/v1/inventory/boar-prime-barrel", json={"delta":-1})
     assert response.status_code == 409
