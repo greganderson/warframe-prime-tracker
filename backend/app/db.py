@@ -41,22 +41,18 @@ CREATE TABLE IF NOT EXISTS inventory (
   item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
   quantity INTEGER NOT NULL DEFAULT 0 CHECK(quantity >= 0), verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS relic_inventory (
-  relic_id TEXT PRIMARY KEY REFERENCES relics(id) ON DELETE CASCADE,
-  quantity INTEGER NOT NULL DEFAULT 0 CHECK(quantity >= 0), verified_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
 CREATE TABLE IF NOT EXISTS equipment_progress (
   equipment_id TEXT PRIMARY KEY REFERENCES equipment(id) ON DELETE CASCADE,
   owned INTEGER NOT NULL DEFAULT 0, mastered INTEGER NOT NULL DEFAULT 0,
   favorite INTEGER NOT NULL DEFAULT 0, target INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS run_sessions (
-  id TEXT PRIMARY KEY, slots_json TEXT NOT NULL DEFAULT '[]', user_slot INTEGER,
+  id TEXT PRIMARY KEY, slots_json TEXT NOT NULL DEFAULT '[]',
   chosen_item_id TEXT, state TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES run_sessions(id),
-  item_id TEXT NOT NULL REFERENCES items(id), consumed_relic_id TEXT REFERENCES relics(id),
+  item_id TEXT NOT NULL REFERENCES items(id),
   idempotency_key TEXT NOT NULL UNIQUE, undone INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -89,6 +85,10 @@ def transaction() -> Iterator[sqlite3.Connection]:
 def initialize() -> None:
     with connect() as db:
         db.executescript(SCHEMA)
+        # Relic ownership was removed in schema version 2. Existing databases may
+        # retain legacy columns, but the quantity table is no longer used.
+        db.execute("DROP TABLE IF EXISTS relic_inventory")
+        db.execute("INSERT INTO metadata(key,value) VALUES('schema_version','2') ON CONFLICT(key) DO UPDATE SET value='2'")
         seed(db)
 
 
@@ -118,6 +118,5 @@ def seed(db: sqlite3.Connection) -> None:
         ("meso-b1", "boar-prime-stock", "common"), ("meso-b1", "forma-blueprint", "common")
     ])
     db.executemany("INSERT INTO inventory(item_id,quantity) VALUES(?,?)", [(x[0], 0) for x in items if x[2] != "equipment"])
-    db.executemany("INSERT INTO relic_inventory(relic_id,quantity) VALUES(?,?)", [("lith-b4", 3), ("meso-b1", 2)])
     db.execute("INSERT INTO equipment_progress(equipment_id) VALUES('boar-prime')")
     db.execute("INSERT INTO metadata VALUES('catalog_notice', ?)", (json.dumps("Demonstration catalog; run a catalog sync before relying on availability."),))

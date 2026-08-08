@@ -1,6 +1,6 @@
 # Warframe Prime Tracker
 
-A local-first Raspberry Pi dashboard for tracking Prime parts, relics, equipment progress, and fissure rewards. It exposes a touch-first `1280×800` display at `/display` and a desktop management UI at `/manage`.
+A local-first Raspberry Pi dashboard for tracking Prime parts, equipment progress, and fissure rewards. Relics are selected only to populate the squad reward matrix; relic ownership is not recorded. It exposes a touch-first `1280×800` display at `/display` and a desktop management UI at `/manage`.
 
 ## Development
 

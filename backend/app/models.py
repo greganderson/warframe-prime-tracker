@@ -17,7 +17,6 @@ class ProgressChange(BaseModel):
 
 class RunCreate(BaseModel):
     relic_ids: list[str] = Field(min_length=1, max_length=4)
-    user_slot: int = Field(ge=0, le=3)
 
 
 class RewardConfirm(BaseModel):
