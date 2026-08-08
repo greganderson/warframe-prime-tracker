@@ -54,13 +54,48 @@ def decode_export_index(content: bytes) -> str:
             return candidate.decode("utf-8")
         except UnicodeDecodeError as error:
             raise CatalogRefreshError("index_decode", f"plaintext index was not UTF-8: {error}") from error
+    errors=[]
     try:
         decoded = lzma.decompress(content).decode("utf-8-sig")
     except (lzma.LZMAError, UnicodeDecodeError) as error:
-        prefix = content[:12].hex() or "empty"
-        raise CatalogRefreshError("index_decode", f"unrecognized index encoding ({len(content)} bytes, prefix {prefix}): {error}") from error
+        errors.append(str(error))
+        try:
+            decoded = _decode_legacy_lzma_raw(content).decode("utf-8-sig")
+        except (lzma.LZMAError, UnicodeDecodeError, ValueError) as fallback_error:
+            errors.append(str(fallback_error))
+            prefix = content[:13].hex() or "empty"
+            raise CatalogRefreshError("index_decode", f"unrecognized index encoding ({len(content)} bytes, prefix {prefix}): {'; '.join(errors)}") from fallback_error
     if not decoded.lstrip().startswith("Export"):
         raise CatalogRefreshError("index_decode", "decoded index did not begin with an Export entry")
+    return decoded
+
+
+def _decode_legacy_lzma_raw(content: bytes) -> bytes:
+    """Decode an LZMA-alone stream without relying on FORMAT_ALONE.
+
+    The official index uses the 13-byte legacy header. Some Windows liblzma
+    builds reject its declared-size variant in FORMAT_AUTO/FORMAT_ALONE even
+    though the raw LZMA1 payload is valid.
+    """
+    if len(content) <= 13:
+        raise ValueError("legacy LZMA stream is shorter than its header")
+    properties = content[0]
+    if properties >= 9 * 5 * 5:
+        raise ValueError(f"invalid LZMA properties byte {properties}")
+    lc = properties % 9
+    remainder = properties // 9
+    lp = remainder % 5
+    pb = remainder // 5
+    dictionary_size = int.from_bytes(content[1:5], "little")
+    if dictionary_size <= 0 or dictionary_size > 1 << 30:
+        raise ValueError(f"invalid LZMA dictionary size {dictionary_size}")
+    decoded = lzma.decompress(content[13:], format=lzma.FORMAT_RAW, filters=[{
+        "id": lzma.FILTER_LZMA1, "dict_size": dictionary_size,
+        "lc": lc, "lp": lp, "pb": pb,
+    }])
+    expected_size = int.from_bytes(content[5:13], "little")
+    if expected_size != 0xFFFFFFFFFFFFFFFF and len(decoded) != expected_size:
+        raise ValueError(f"legacy LZMA size mismatch: expected {expected_size}, decoded {len(decoded)}")
     return decoded
 
 

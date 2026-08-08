@@ -1,6 +1,6 @@
 import lzma
 
-from app.public_export import decode_export_index, normalize_relics
+from app.public_export import _decode_legacy_lzma_raw, decode_export_index, normalize_relics
 
 
 def test_public_export_collapses_refinements():
@@ -19,3 +19,10 @@ def test_export_index_accepts_lzma_and_predecoded_cdn_content():
     assert decode_export_index(lzma.compress(index.encode(), format=lzma.FORMAT_ALONE)) == index
     assert decode_export_index(index.encode()) == index
     assert decode_export_index(b"\xef\xbb\xbf" + index.encode()) == index
+
+
+def test_windows_legacy_lzma_fallback_handles_declared_size_header():
+    index = b"ExportRelicArcane_en.json!00_example\n"
+    compressed = bytearray(lzma.compress(index, format=lzma.FORMAT_ALONE))
+    compressed[5:13] = len(index).to_bytes(8, "little")
+    assert _decode_legacy_lzma_raw(bytes(compressed)) == index
