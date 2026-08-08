@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import event, inspect
+from sqlalchemy import event
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 DB_PATH = Path(os.getenv("TRACKER_DB", Path(__file__).parents[2] / "data" / "tracker.db"))
@@ -128,7 +128,6 @@ def session_scope() -> Iterator[Session]:
 
 
 def initialize() -> None:
-    _remove_obsolete_progress_columns()
     SQLModel.metadata.create_all(engine)
     with session_scope() as session:
         metadata = session.get(AppMetadata, "schema_version")
@@ -137,22 +136,6 @@ def initialize() -> None:
         else:
             session.add(AppMetadata(key="schema_version", value="4"))
         seed(session)
-
-
-def _remove_obsolete_progress_columns() -> None:
-    """Remove Favorite/Target storage left by schema versions before v4."""
-    inspector = inspect(engine)
-    if "equipment_progress" not in inspector.get_table_names():
-        return
-    columns = {column["name"] for column in inspector.get_columns("equipment_progress")}
-    obsolete = columns & {"favorite", "target"}
-    if not obsolete:
-        return
-    # SQLModel handles data access, but schema changes require SQLite DDL.
-    with engine.begin() as connection:
-        for column in ("favorite", "target"):
-            if column in obsolete:
-                connection.exec_driver_sql(f'ALTER TABLE equipment_progress DROP COLUMN "{column}"')
 
 
 def seed(session: Session) -> None:
