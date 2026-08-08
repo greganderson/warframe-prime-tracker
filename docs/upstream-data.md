@@ -1,6 +1,6 @@
 # Upstream data contract
 
-The bundled records are demonstration data only. Production catalog synchronization should stage and validate a complete normalized dataset before swapping it into SQLite. A failed fetch or validation must leave current tables untouched.
+The relic picker imports the complete Lith, Meso, Neo, and Axi list from Public Export, collapses refinement variants, validates the catalog size, and commits it in one SQLite transaction. A failed fetch or validation leaves current tables untouched. Other production catalog sources remain to be completed as described below.
 
 Sources and cadence:
 

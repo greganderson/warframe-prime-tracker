@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from . import db as database
 from .models import ProgressChange, QuantityChange, RewardConfirm, RunCreate
 from .services import collection, confirm_reward, create_session, session_view, undo, utc_now
+from .public_export import refresh_relic_catalog
 
 
 @asynccontextmanager
@@ -37,6 +38,22 @@ def relics(era: str | None = None):
     with database.connect() as db:
         rows = db.execute("SELECT * FROM relics WHERE (? IS NULL OR era=?) ORDER BY era,code", (era,era)).fetchall()
         return [dict(x) for x in rows]
+
+
+@app.post("/api/v1/catalog/relics/refresh")
+def refresh_relics():
+    try:
+        return {"relics": refresh_relic_catalog(), "refreshed_at": utc_now()}
+    except Exception as error:
+        raise HTTPException(502, f"Official relic catalog refresh failed: {error}")
+
+
+@app.get("/api/v1/catalog/relics/status")
+def relic_catalog_status():
+    with database.connect() as db:
+        count = db.execute("SELECT COUNT(*) FROM relics").fetchone()[0]
+        metadata = {row["key"]: row["value"] for row in db.execute("SELECT key,value FROM metadata WHERE key LIKE 'relic_catalog_%'")}
+    return {"count": count, **metadata}
 
 
 @app.get("/api/v1/collection")

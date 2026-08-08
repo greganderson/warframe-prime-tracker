@@ -1,5 +1,6 @@
 import os
 os.environ["TRACKER_DB"] = "/tmp/warframe-tracker-test.db"
+os.environ["TRACKER_DISABLE_SYNC"] = "1"
 
 import pytest
 from fastapi.testclient import TestClient
