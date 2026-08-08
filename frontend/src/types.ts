@@ -1,6 +1,7 @@
 export type AvailabilityStatus='farmable'|'resurgence'|'special'|'vaulted'|'exclusive'|'unknown';
 export interface Part {id:string;name:string;required:number;owned:number;ducats:number;market_median:number|null;availability:AvailabilityStatus}
-export interface Equipment {id:string;name:string;type:'warframe'|'weapon'|'equipment';availability:AvailabilityStatus;owned:number;mastered:number;favorite:number;target:number;ready:boolean;missing_count:number;surplus_sets:number;parts:Part[]}
+export type EquipmentType='warframe'|'archwing'|'primary'|'secondary'|'melee'|'archgun'|'companion'|'companion_weapon'|'equipment';
+export interface Equipment {id:string;name:string;type:EquipmentType;availability:AvailabilityStatus;owned:number;mastered:number;ready:boolean;missing_count:number;surplus_sets:number;parts:Part[]}
 export interface Relic {id:string;era:string;code:string;availability:AvailabilityStatus}
 export interface Reward extends Part {rarity:'common'|'uncommon'|'rare';market_window:string|null}
 export interface RunColumn extends Relic {rewards:Reward[]}

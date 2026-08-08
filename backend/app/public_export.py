@@ -24,7 +24,9 @@ CATALOG_EXPORTS = {
     "resources": "ExportResources_en.json!",
     "warframes": "ExportWarframes_en.json!",
     "weapons": "ExportWeapons_en.json!",
+    "sentinels": "ExportSentinels_en.json!",
 }
+DROP_TABLE_URL = "https://www-static.warframe.com/uploads/cms/hnfvc0o3jnfvc873njb03enrf56.html"
 
 
 class CatalogRefreshError(RuntimeError):
@@ -142,12 +144,26 @@ def _slug(name:str)->str:
     return re.sub(r"[^a-z0-9]+","-",name.lower()).strip("-")
 
 
+def _clean_equipment_name(name:str)->str:
+    return re.sub(r"^<[^>]+>\s*", "", name).strip()
+
+
 def normalize_equipment(manifests:dict[str,dict])->list[dict]:
     recipes=manifests["recipes"].get("ExportRecipes",[])
     resources={row.get("uniqueName"):row for row in manifests["resources"].get("ExportResources",[])}
     recipe_by_result={row.get("resultType"):row for row in recipes if row.get("resultType")}
-    sources=[("warframe",manifests["warframes"].get("ExportWarframes",[])),
-             ("weapon",manifests["weapons"].get("ExportWeapons",[]))]
+    warframe_rows=manifests["warframes"].get("ExportWarframes",[])
+    weapon_rows=manifests["weapons"].get("ExportWeapons",[])
+    sentinel_rows=manifests["sentinels"].get("ExportSentinels",[])
+    def equipment_type(source:str,row:dict)->str|None:
+        category=row.get("productCategory")
+        if source=="warframes": return "archwing" if category=="SpaceSuits" else "warframe"
+        if source=="sentinels": return "companion" if category=="Sentinels" else None
+        return {"LongGuns":"primary","Pistols":"secondary","Melee":"melee",
+                "SpaceGuns":"archgun","SentinelWeapons":"companion_weapon"}.get(category)
+    categorized=[("warframes",row) for row in warframe_rows]+[("weapons",row) for row in weapon_rows]+[("sentinels",row) for row in sentinel_rows]
+    sources=[(equipment_type(source,row),row) for source,row in categorized]
+    sources=[(kind,[row]) for kind,row in sources if kind]
     equipment_index={row.get("uniqueName"):(kind,row) for kind,rows in sources for row in rows
                      if row.get("uniqueName") and " Prime" in row.get("name","")}
     def recipe_parts(equipment_row:dict,multiplier:int=1,stack:frozenset[str]=frozenset())->list[dict]:
@@ -155,7 +171,7 @@ def normalize_equipment(manifests:dict[str,dict])->list[dict]:
         if unique_name in stack: return []
         main=recipe_by_result.get(unique_name)
         if not main: return []
-        name=equipment_row["name"]
+        name=_clean_equipment_name(equipment_row["name"])
         parts=[{"source":main["uniqueName"],"name":f"{name} Blueprint","quantity":multiplier,
                 "ducats":main.get("primeSellingPrice",0)}]
         for ingredient in main.get("ingredients",[]):
@@ -180,7 +196,7 @@ def normalize_equipment(manifests:dict[str,dict])->list[dict]:
     equipment=[]
     for kind,rows in sources:
         for row in rows:
-            name=row.get("name","")
+            name=_clean_equipment_name(row.get("name",""))
             if " Prime" not in name or not row.get("uniqueName"): continue
             main=recipe_by_result.get(row["uniqueName"])
             if not main: continue
@@ -201,6 +217,31 @@ def normalize_relics(payload:dict)->list[dict]:
         normalized.setdefault(relic_id,{"id":relic_id,"era":era,"code":code,"rewards":rewards})
     if len(normalized)<100: raise CatalogRefreshError("manifest_validate",f"only {len(normalized)} valid relics")
     return list(normalized.values())
+
+
+def parse_farmable_relics(html:str)->set[str]:
+    """Return relics found in current acquisition sections of the drop table.
+
+    The official page also contains a complete ``relicRewards`` archive.  That
+    section describes contents, not current acquisition, and including it
+    incorrectly classifies every historical relic as farmable.
+    """
+    section_ranges=(
+        ('<h3 id="missionRewards">', '<h3 id="relicRewards">'),
+        ('<h3 id="cetusRewards">', '<h3 id="modByAvatar">'),
+        ('<h3 id="relicByAvatar">', '</body>'),
+    )
+    acquisition_html=[]
+    for start_marker,end_marker in section_ranges:
+        start=html.find(start_marker)
+        if start<0: continue
+        end=html.find(end_marker,start+len(start_marker))
+        acquisition_html.append(html[start:end if end>=0 else len(html)])
+    farmable={f"{era.lower()}-{code.lower()}" for era,code in re.findall(
+        r"\b(Lith|Meso|Neo|Axi)\s+([A-Z]+\d+)\s+Relic\b", "\n".join(acquisition_html))}
+    if len(farmable)<20:
+        raise CatalogRefreshError("drop_tables_validate",f"only {len(farmable)} farmable relics")
+    return farmable
 
 
 def _set_metadata(session,key:str,value:str)->None:
@@ -225,8 +266,13 @@ def _item_for_part(session,source:str,name:str,ducats:int)->Item:
 def import_equipment_catalog(session,equipment_rows:list[dict])->None:
     for data in equipment_rows:
         item=session.exec(select(Item).where(Item.name==data["name"])).first()
+        if not item:
+            item=next((candidate for candidate in session.exec(select(Item).where(Item.kind.in_([
+                "equipment","warframe","weapon","archwing","primary","secondary","melee",
+                "archgun","companion","companion_weapon"]))).all()
+                if _clean_equipment_name(candidate.name)==data["name"]),None)
         if not item: item=Item(id=data["id"],name=data["name"],kind=data["kind"]); session.add(item); session.flush()
-        else: item.kind=data["kind"]
+        else: item.name=data["name"]; item.kind=data["kind"]
         equipment=session.get(Equipment,item.id)
         if not equipment:
             equipment=Equipment(id=item.id,founder_exclusive=data["founder_exclusive"]); session.add(equipment); session.flush()
@@ -239,14 +285,15 @@ def import_equipment_catalog(session,equipment_rows:list[dict])->None:
             session.add(Recipe(equipment_id=item.id,component_id=component.id,quantity=part["quantity"]))
 
 
-def refresh_relic_catalog(payload:dict|None=None, manifests:dict[str,dict]|None=None)->int:
+def refresh_relic_catalog(payload:dict|None=None, farmable_relics:set[str]|None=None)->int:
     try:
         relics=normalize_relics(payload or fetch_relic_manifest())
         with session_scope() as session:
             for data in relics:
                 relic=session.get(Relic,data["id"])
-                if relic: relic.era=data["era"]; relic.code=data["code"]
-                else: relic=Relic(id=data["id"],era=data["era"],code=data["code"]); session.add(relic)
+                availability=("farmable" if data["id"] in farmable_relics else "vaulted") if farmable_relics is not None else "unknown"
+                if relic: relic.era=data["era"]; relic.code=data["code"]; relic.availability=availability
+                else: relic=Relic(id=data["id"],era=data["era"],code=data["code"],availability=availability); session.add(relic)
                 for old in session.exec(select(RelicReward).where(RelicReward.relic_id==data["id"])).all(): session.delete(old)
                 session.flush()
                 linked=set()
@@ -274,7 +321,14 @@ def refresh_relic_catalog(payload:dict|None=None, manifests:dict[str,dict]|None=
 def refresh_full_catalog(manifests:dict[str,dict]|None=None)->dict:
     bundle=manifests or fetch_catalog_manifests()
     equipment=normalize_equipment(bundle)
-    relic_count=refresh_relic_catalog(bundle["relics"])
+    farmable=None
+    if manifests is None:
+        try:
+            html=_download([DROP_TABLE_URL],"drop_tables_download").decode("utf-8",errors="replace")
+            farmable=parse_farmable_relics(html)
+        except CatalogRefreshError:
+            farmable=None
+    relic_count=refresh_relic_catalog(bundle["relics"],farmable)
     try:
         with session_scope() as session:
             import_equipment_catalog(session,equipment)

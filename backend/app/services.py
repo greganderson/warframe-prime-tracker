@@ -33,7 +33,7 @@ def collection(session: Session) -> list[dict]:
         result.append({"id":item.id,"name":item.name,"availability":item.availability,
             "type":item.kind,
             "founder_exclusive":equipment.founder_exclusive,"owned":progress.owned,
-            "mastered":progress.mastered,"favorite":progress.favorite,"target":progress.target,
+            "mastered":progress.mastered,
             "parts":parts,"ready":ready,
             "missing_count":sum(max(0,p["required"]-p["owned"]) for p in parts),
             "surplus_sets":min((p["owned"]//p["required"] for p in parts),default=0)})

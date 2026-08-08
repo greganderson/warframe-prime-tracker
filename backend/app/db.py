@@ -69,8 +69,6 @@ class EquipmentProgress(SQLModel, table=True):
     equipment_id: str = Field(primary_key=True, foreign_key="equipment.id")
     owned: bool = False
     mastered: bool = False
-    favorite: bool = False
-    target: bool = False
 
 
 class RunSessionRecord(SQLModel, table=True):

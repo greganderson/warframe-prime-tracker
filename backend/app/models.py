@@ -11,8 +11,6 @@ class QuantityChange(BaseModel):
 class ProgressChange(BaseModel):
     owned: bool | None = None
     mastered: bool | None = None
-    favorite: bool | None = None
-    target: bool | None = None
 
 
 class RunCreate(BaseModel):
@@ -27,3 +25,7 @@ class RewardConfirm(BaseModel):
 class InventoryImportRow(BaseModel):
     item_id: str
     quantity: int = Field(ge=0)
+
+
+class PriceRequest(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=24)

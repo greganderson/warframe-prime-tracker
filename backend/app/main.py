@@ -15,7 +15,8 @@ from sqlmodel import delete, select
 from . import db as database
 from .db import (AppMetadata, EquipmentProgress, Inventory, Item, MODEL_BY_TABLE,
                  MODELS, Relic, Session, engine, now, session_scope)
-from .models import ProgressChange, QuantityChange, RewardConfirm, RunCreate
+from .models import PriceRequest, ProgressChange, QuantityChange, RewardConfirm, RunCreate
+from .market import refresh_market_prices
 from .public_export import CatalogRefreshError, refresh_full_catalog
 from .services import collection, confirm_reward, create_session, session_view, undo, utc_now
 
@@ -52,6 +53,11 @@ def relic_catalog_status():
     with Session(engine) as session:
         records=session.exec(select(AppMetadata).where(AppMetadata.key.startswith("relic_catalog_"))).all()
         return {"count":len(session.exec(select(Relic)).all()),**{record.key:record.value for record in records}}
+
+@app.post("/api/v1/market/prices")
+def market_prices(body:PriceRequest):
+    try: return refresh_market_prices(body.item_ids)
+    except Exception as error: raise HTTPException(502,f"Market refresh failed: {error}")
 
 @app.get("/api/v1/collection")
 def get_collection():
