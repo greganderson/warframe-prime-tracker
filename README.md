@@ -31,4 +31,4 @@ See [deploy/README.md](deploy/README.md). Keep the device on a trusted private L
 
 ## Data safety
 
-The SQLite database defaults to `data/tracker.db`, uses WAL mode, and all reward confirmation changes are atomic and reversible. JSON backup/restore and CSV inventory import/export are available in the management interface. On the first Run-mode visit, the app imports every Lith, Meso, Neo, and Axi relic from Warframe's official Public Export and caches the result for offline use. A failed refresh retains the last valid dataset.
+The SQLite database defaults to `data/tracker.db`, uses WAL mode, and all reward confirmation changes are atomic and reversible. JSON backup/restore and CSV inventory import/export are available in the management interface. **Refresh catalog** imports every Lith, Meso, Neo, and Axi relic plus Prime Warframe and weapon recipes from Warframe's official Public Export and caches the result for offline use. A failed refresh retains the last valid dataset.

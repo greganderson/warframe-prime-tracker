@@ -31,6 +31,7 @@ def collection(session: Session) -> list[dict]:
         parts.sort(key=lambda part: part["name"])
         ready = all(part["owned"] >= part["required"] for part in parts)
         result.append({"id":item.id,"name":item.name,"availability":item.availability,
+            "type":item.kind,
             "founder_exclusive":equipment.founder_exclusive,"owned":progress.owned,
             "mastered":progress.mastered,"favorite":progress.favorite,"target":progress.target,
             "parts":parts,"ready":ready,

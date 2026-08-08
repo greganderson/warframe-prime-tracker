@@ -16,7 +16,7 @@ from . import db as database
 from .db import (AppMetadata, EquipmentProgress, Inventory, Item, MODEL_BY_TABLE,
                  MODELS, Relic, Session, engine, now, session_scope)
 from .models import ProgressChange, QuantityChange, RewardConfirm, RunCreate
-from .public_export import CatalogRefreshError, refresh_relic_catalog
+from .public_export import CatalogRefreshError, refresh_full_catalog
 from .services import collection, confirm_reward, create_session, session_view, undo, utc_now
 
 
@@ -38,7 +38,7 @@ def relics(era:str|None=None):
 
 @app.post("/api/v1/catalog/relics/refresh")
 def refresh_relics():
-    try: return {"relics":refresh_relic_catalog(),"refreshed_at":utc_now()}
+    try: return {**refresh_full_catalog(),"refreshed_at":utc_now()}
     except CatalogRefreshError as error:
         with session_scope() as session:
             record=session.get(AppMetadata,"relic_catalog_error")

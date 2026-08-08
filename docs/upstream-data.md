@@ -1,6 +1,6 @@
 # Upstream data contract
 
-The relic picker imports the complete Lith, Meso, Neo, and Axi list from Public Export, collapses refinement variants, validates the catalog size, and commits it in one SQLite transaction. A failed fetch or validation leaves current tables untouched. Other production catalog sources remain to be completed as described below.
+The catalog refresh imports the complete Lith, Meso, Neo, and Axi list plus Prime Warframes, weapons, blueprints, components, and nested dual-weapon requirements from Public Export. It collapses relic refinement variants, validates both catalog sizes, and commits through SQLModel sessions. A failed fetch or validation leaves the last usable data available. Other production catalog sources remain to be completed as described below.
 
 Sources and cadence:
 
