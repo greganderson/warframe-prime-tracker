@@ -1,97 +1,103 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+from sqlmodel import Session, select
+
+from .db import (Equipment, EquipmentProgress, Inventory, InventoryTransaction,
+                 Item, Recipe, Relic, RelicReward, RunSessionRecord, now)
 
 
-def collection(db: sqlite3.Connection) -> list[dict]:
-    equipment = db.execute("""
-      SELECT i.id,i.name,i.availability,e.founder_exclusive,p.owned,p.mastered,p.favorite,p.target
-      FROM equipment e JOIN items i ON i.id=e.id JOIN equipment_progress p ON p.equipment_id=e.id
-      ORDER BY i.name
-    """).fetchall()
+def collection(session: Session) -> list[dict]:
     result = []
-    for eq in equipment:
-        parts = [dict(r) for r in db.execute("""
-          SELECT i.id,i.name,r.quantity required,COALESCE(inv.quantity,0) owned,i.ducats,i.market_median,
-                 i.availability
-          FROM recipes r JOIN items i ON i.id=r.component_id
-          LEFT JOIN inventory inv ON inv.item_id=i.id WHERE r.equipment_id=? ORDER BY i.name
-        """, (eq["id"],))]
-        ready = all(p["owned"] >= p["required"] for p in parts)
-        missing = sum(max(0, p["required"] - p["owned"]) for p in parts)
-        result.append({**dict(eq), "parts": parts, "ready": ready, "missing_count": missing,
-                       "surplus_sets": min((p["owned"] // p["required"] for p in parts), default=0)})
-    return result
+    equipment_rows = session.exec(select(Equipment).order_by(Equipment.id)).all()
+    for equipment in equipment_rows:
+        item = session.get(Item, equipment.id)
+        progress = session.get(EquipmentProgress, equipment.id)
+        if not item or not progress:
+            continue
+        parts = []
+        recipes = session.exec(select(Recipe).where(Recipe.equipment_id == equipment.id)).all()
+        for recipe in recipes:
+            component = session.get(Item, recipe.component_id)
+            inventory = session.get(Inventory, recipe.component_id)
+            if component:
+                parts.append({"id":component.id,"name":component.name,"required":recipe.quantity,
+                    "owned":inventory.quantity if inventory else 0,"ducats":component.ducats,
+                    "market_median":component.market_median,"availability":component.availability})
+        parts.sort(key=lambda part: part["name"])
+        ready = all(part["owned"] >= part["required"] for part in parts)
+        result.append({"id":item.id,"name":item.name,"availability":item.availability,
+            "founder_exclusive":equipment.founder_exclusive,"owned":progress.owned,
+            "mastered":progress.mastered,"favorite":progress.favorite,"target":progress.target,
+            "parts":parts,"ready":ready,
+            "missing_count":sum(max(0,p["required"]-p["owned"]) for p in parts),
+            "surplus_sets":min((p["owned"]//p["required"] for p in parts),default=0)})
+    return sorted(result, key=lambda row: row["name"])
 
 
-def session_view(db: sqlite3.Connection, session_id: str) -> dict:
-    session = db.execute("SELECT * FROM run_sessions WHERE id=?", (session_id,)).fetchone()
-    if not session:
+def session_view(session: Session, session_id: str) -> dict:
+    run = session.get(RunSessionRecord, session_id)
+    if not run:
         raise HTTPException(404, "Run session not found")
-    slots = json.loads(session["slots_json"])
-    columns = []
-    for relic_id in slots:
-        relic = db.execute("SELECT * FROM relics WHERE id=?", (relic_id,)).fetchone()
-        rewards = [dict(x) for x in db.execute("""
-          SELECT i.id,i.name,rr.rarity,i.ducats,i.market_median,i.market_window,i.availability,
-                 COALESCE(inv.quantity,0) owned,
-                 COALESCE((SELECT SUM(quantity) FROM recipes WHERE component_id=i.id),0) required
-          FROM relic_rewards rr JOIN items i ON i.id=rr.item_id
-          LEFT JOIN inventory inv ON inv.item_id=i.id WHERE rr.relic_id=?
-          ORDER BY CASE rr.rarity WHEN 'rare' THEN 1 WHEN 'uncommon' THEN 2 ELSE 3 END,i.name
-        """, (relic_id,))]
-        columns.append({**dict(relic), "rewards": rewards})
-    return {"id": session["id"], "state": session["state"],
-            "chosen_item_id": session["chosen_item_id"], "columns": columns}
+    columns=[]
+    for relic_id in json.loads(run.slots_json):
+        relic=session.get(Relic,relic_id)
+        if not relic: continue
+        rewards=[]
+        links=session.exec(select(RelicReward).where(RelicReward.relic_id==relic_id)).all()
+        for link in links:
+            item=session.get(Item,link.item_id)
+            if not item: continue
+            inventory=session.get(Inventory,item.id)
+            recipes=session.exec(select(Recipe).where(Recipe.component_id==item.id)).all()
+            rewards.append({"id":item.id,"name":item.name,"rarity":link.rarity,"ducats":item.ducats,
+                "market_median":item.market_median,"market_window":item.market_window,
+                "availability":item.availability,"owned":inventory.quantity if inventory else 0,
+                "required":sum(recipe.quantity for recipe in recipes)})
+        rarity_order={"rare":0,"uncommon":1,"common":2}
+        rewards.sort(key=lambda reward:(rarity_order.get(reward["rarity"],3),reward["name"]))
+        columns.append({**relic.model_dump(),"rewards":rewards})
+    return {"id":run.id,"state":run.state,"chosen_item_id":run.chosen_item_id,"columns":columns}
 
 
-def create_session(db: sqlite3.Connection, relic_ids: list[str]) -> dict:
-    found = db.execute(f"SELECT COUNT(*) FROM relics WHERE id IN ({','.join('?' * len(relic_ids))})", relic_ids).fetchone()[0]
-    if found != len(set(relic_ids)):
-        # Duplicate squad relics are valid, so compare unique IDs.
-        found_unique = db.execute(f"SELECT COUNT(*) FROM relics WHERE id IN ({','.join('?' * len(set(relic_ids)))})", tuple(set(relic_ids))).fetchone()[0]
-        if found_unique != len(set(relic_ids)):
-            raise HTTPException(422, "Unknown relic")
-    session_id = str(uuid.uuid4())
-    db.execute("INSERT INTO run_sessions(id,slots_json) VALUES(?,?)", (session_id, json.dumps(relic_ids)))
-    return session_view(db, session_id)
+def create_session(session: Session, relic_ids: list[str]) -> dict:
+    unique=set(relic_ids)
+    found=session.exec(select(Relic.id).where(Relic.id.in_(unique))).all()
+    if len(found)!=len(unique): raise HTTPException(422,"Unknown relic")
+    run=RunSessionRecord(id=str(uuid.uuid4()),slots_json=json.dumps(relic_ids))
+    session.add(run); session.flush()
+    return session_view(session,run.id)
 
 
-def confirm_reward(db: sqlite3.Connection, session_id: str, item_id: str, key: str) -> dict:
-    existing = db.execute("SELECT id FROM transactions WHERE idempotency_key=?", (key,)).fetchone()
-    if existing:
-        return {"transaction_id": existing["id"], "duplicate": True}
-    session = db.execute("SELECT * FROM run_sessions WHERE id=?", (session_id,)).fetchone()
-    if not session or session["state"] != "open":
-        raise HTTPException(409, "Run is not open")
-    slots = json.loads(session["slots_json"])
-    valid = db.execute(f"SELECT 1 FROM relic_rewards WHERE item_id=? AND relic_id IN ({','.join('?' * len(slots))})", (item_id, *slots)).fetchone()
-    if not valid:
-        raise HTTPException(422, "Reward is not in this squad rotation")
-    db.execute("INSERT INTO inventory(item_id,quantity) VALUES(?,1) ON CONFLICT(item_id) DO UPDATE SET quantity=quantity+1,verified_at=CURRENT_TIMESTAMP", (item_id,))
-    tx_id = str(uuid.uuid4())
-    db.execute("INSERT INTO transactions(id,session_id,item_id,idempotency_key) VALUES(?,?,?,?)", (tx_id,session_id,item_id,key))
-    db.execute("UPDATE run_sessions SET chosen_item_id=?,state='confirmed' WHERE id=?", (item_id,session_id))
-    return {"transaction_id": tx_id, "duplicate": False}
+def confirm_reward(session: Session, session_id: str, item_id: str, key: str) -> dict:
+    existing=session.exec(select(InventoryTransaction).where(InventoryTransaction.idempotency_key==key)).first()
+    if existing: return {"transaction_id":existing.id,"duplicate":True}
+    run=session.get(RunSessionRecord,session_id)
+    if not run or run.state!="open": raise HTTPException(409,"Run is not open")
+    slots=json.loads(run.slots_json)
+    valid=session.exec(select(RelicReward).where(RelicReward.item_id==item_id,RelicReward.relic_id.in_(slots))).first()
+    if not valid: raise HTTPException(422,"Reward is not in this squad rotation")
+    inventory=session.get(Inventory,item_id)
+    if inventory: inventory.quantity+=1; inventory.verified_at=now()
+    else: session.add(Inventory(item_id=item_id,quantity=1))
+    transaction=InventoryTransaction(id=str(uuid.uuid4()),session_id=session_id,item_id=item_id,idempotency_key=key)
+    session.add(transaction); run.chosen_item_id=item_id; run.state="confirmed"; session.flush()
+    return {"transaction_id":transaction.id,"duplicate":False}
 
 
-def undo(db: sqlite3.Connection, transaction_id: str) -> None:
-    tx = db.execute("SELECT * FROM transactions WHERE id=?", (transaction_id,)).fetchone()
-    if not tx:
-        raise HTTPException(404, "Transaction not found")
-    if tx["undone"]:
-        return
-    owned = db.execute("SELECT quantity FROM inventory WHERE item_id=?", (tx["item_id"],)).fetchone()[0]
-    if owned < 1:
-        raise HTTPException(409, "Inventory changed; cannot safely undo")
-    db.execute("UPDATE inventory SET quantity=quantity-1 WHERE item_id=?", (tx["item_id"],))
-    db.execute("UPDATE transactions SET undone=1 WHERE id=?", (transaction_id,))
-    db.execute("UPDATE run_sessions SET state='open',chosen_item_id=NULL WHERE id=?", (tx["session_id"],))
+def undo(session: Session, transaction_id: str) -> None:
+    transaction=session.get(InventoryTransaction,transaction_id)
+    if not transaction: raise HTTPException(404,"Transaction not found")
+    if transaction.undone: return
+    inventory=session.get(Inventory,transaction.item_id)
+    if not inventory or inventory.quantity<1: raise HTTPException(409,"Inventory changed; cannot safely undo")
+    inventory.quantity-=1; inventory.verified_at=now(); transaction.undone=True
+    run=session.get(RunSessionRecord,transaction.session_id)
+    if run: run.state="open"; run.chosen_item_id=None
 
 
 def utc_now() -> str:

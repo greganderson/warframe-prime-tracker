@@ -1,6 +1,6 @@
 export async function api<T>(path:string, init?:RequestInit):Promise<T>{
   const response=await fetch(`/api/v1${path}`,{...init,headers:{'Content-Type':'application/json',...(init?.headers||{})}});
-  if(!response.ok){let message=`Request failed (${response.status})`;try{message=(await response.json()).detail||message}catch{}throw new Error(message)}
+  if(!response.ok){let message=`Request failed (${response.status})`;try{const detail=(await response.json()).detail;if(typeof detail==='string')message=detail;else if(detail?.message)message=`${detail.message}${detail.stage?` (${detail.stage})`:''}${detail.reason?`: ${detail.reason}`:''}`}catch{}throw new Error(message)}
   return response.json();
 }
 export const patch=(path:string,body:unknown)=>api(path,{method:'PATCH',body:JSON.stringify(body)});
