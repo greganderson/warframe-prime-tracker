@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Warframe Tracker Kiosk
+Exec=chromium --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble http://127.0.0.1:8000/display
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,7 @@
+[Unit]
+Description=Back up Warframe Tracker database
+
+[Service]
+Type=oneshot
+User=pi
+ExecStart=/opt/warframe-tracker/deploy/rotate-backups.sh
