@@ -41,10 +41,31 @@ def _download(urls: list[str], stage: str) -> bytes:
     raise CatalogRefreshError(stage,"; ".join(errors[-4:]))
 
 
+def decode_export_index(content: bytes) -> str:
+    """Decode Public Export indexes across CDN/client content encodings.
+
+    Some CDN edges label the LZMA response in a way that HTTP clients decode
+    automatically. In that case ``response.content`` is already the plaintext
+    index even though the URL still ends in ``.lzma``.
+    """
+    candidate = content.lstrip(b"\xef\xbb\xbf\r\n\t ")
+    if candidate.startswith(b"Export"):
+        try:
+            return candidate.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise CatalogRefreshError("index_decode", f"plaintext index was not UTF-8: {error}") from error
+    try:
+        decoded = lzma.decompress(content).decode("utf-8-sig")
+    except (lzma.LZMAError, UnicodeDecodeError) as error:
+        prefix = content[:12].hex() or "empty"
+        raise CatalogRefreshError("index_decode", f"unrecognized index encoding ({len(content)} bytes, prefix {prefix}): {error}") from error
+    if not decoded.lstrip().startswith("Export"):
+        raise CatalogRefreshError("index_decode", "decoded index did not begin with an Export entry")
+    return decoded
+
+
 def fetch_relic_manifest() -> dict:
-    try: index=lzma.decompress(_download(INDEX_URLS,"index_download")).decode("utf-8")
-    except CatalogRefreshError: raise
-    except (lzma.LZMAError,UnicodeDecodeError) as error: raise CatalogRefreshError("index_decode",str(error)) from error
+    index=decode_export_index(_download(INDEX_URLS,"index_download"))
     filename=next((line for line in index.splitlines() if line.startswith("ExportRelicArcane_en.json!")),None)
     if not filename: raise CatalogRefreshError("index_parse","relic manifest filename was missing")
     try: payload=json.loads(_download([base+filename for base in MANIFEST_BASES],"manifest_download"))

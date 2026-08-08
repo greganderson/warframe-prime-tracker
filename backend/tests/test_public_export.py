@@ -1,4 +1,6 @@
-from app.public_export import normalize_relics
+import lzma
+
+from app.public_export import decode_export_index, normalize_relics
 
 
 def test_public_export_collapses_refinements():
@@ -10,3 +12,10 @@ def test_public_export_collapses_refinements():
     normalized = normalize_relics({"ExportRelicArcane":entries})
     assert len(normalized) == 100
     assert normalized[0]["id"] == "lith-a1"
+
+
+def test_export_index_accepts_lzma_and_predecoded_cdn_content():
+    index = "ExportRelicArcane_en.json!00_example\n"
+    assert decode_export_index(lzma.compress(index.encode(), format=lzma.FORMAT_ALONE)) == index
+    assert decode_export_index(index.encode()) == index
+    assert decode_export_index(b"\xef\xbb\xbf" + index.encode()) == index
