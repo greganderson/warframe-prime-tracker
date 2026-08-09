@@ -29,6 +29,33 @@ def test_run_rewards_show_mastered_equipment(client):
     assert barrel["mastered"] is True
 
 
+def test_run_rewards_show_complete_unmastered_sets(client):
+    for item_id in ("boar-prime-blueprint", "boar-prime-barrel",
+                    "boar-prime-receiver", "boar-prime-stock"):
+        client.patch(f"/api/v1/inventory/{item_id}", json={"delta":1})
+    run = client.post("/api/v1/runs", json={"relic_ids":["lith-b4"]}).json()
+    barrel = next(reward for reward in run["columns"][0]["rewards"]
+                  if reward["id"] == "boar-prime-barrel")
+    assert barrel["set_complete"] is True
+    assert barrel["mastered"] is False
+
+
+def test_run_rewards_distinguish_an_owned_part_from_a_complete_set(client):
+    client.patch("/api/v1/inventory/boar-prime-barrel", json={"delta":1})
+    run = client.post("/api/v1/runs", json={"relic_ids":["lith-b4"]}).json()
+    barrel = next(reward for reward in run["columns"][0]["rewards"]
+                  if reward["id"] == "boar-prime-barrel")
+    assert barrel["part_owned"] is True
+    assert barrel["set_complete"] is False
+
+
+def test_platinum_highlight_threshold_is_shared_and_validated(client):
+    assert client.get("/api/v1/settings").json()["platinum_highlight_threshold"] == 20
+    assert client.patch("/api/v1/settings",json={"platinum_highlight_threshold":45}).status_code == 200
+    assert client.get("/api/v1/settings").json()["platinum_highlight_threshold"] == 45
+    assert client.patch("/api/v1/settings",json={"platinum_highlight_threshold":101}).status_code == 422
+
+
 def test_inventory_cannot_be_negative(client):
     response = client.patch("/api/v1/inventory/boar-prime-barrel", json={"delta":-1})
     assert response.status_code == 409

@@ -29,3 +29,7 @@ class InventoryImportRow(BaseModel):
 
 class PriceRequest(BaseModel):
     item_ids: list[str] = Field(min_length=1, max_length=24)
+
+
+class SettingsChange(BaseModel):
+    platinum_highlight_threshold: int = Field(ge=5, le=100)

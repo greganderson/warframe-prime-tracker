@@ -15,7 +15,8 @@ from sqlmodel import delete, select
 from . import db as database
 from .db import (AppMetadata, EquipmentProgress, Inventory, Item, MODEL_BY_TABLE,
                  MODELS, Relic, Session, engine, now, session_scope)
-from .models import PriceRequest, ProgressChange, QuantityChange, RewardConfirm, RunCreate
+from .models import (PriceRequest, ProgressChange, QuantityChange, RewardConfirm,
+                     RunCreate, SettingsChange)
 from .market import refresh_market_prices
 from .public_export import CatalogRefreshError, refresh_full_catalog
 from .services import collection, confirm_reward, create_session, session_view, undo, utc_now
@@ -29,6 +30,21 @@ app.add_middleware(CORSMiddleware,allow_origins=["http://localhost:5173"],allow_
 
 @app.get("/api/v1/health")
 def health(): return {"status":"ok","time":utc_now()}
+
+@app.get("/api/v1/settings")
+def get_settings():
+    with Session(engine) as session:
+        record=session.get(AppMetadata,"platinum_highlight_threshold")
+        return {"platinum_highlight_threshold":int(record.value) if record else 20}
+
+@app.patch("/api/v1/settings")
+def change_settings(body:SettingsChange):
+    with session_scope() as session:
+        record=session.get(AppMetadata,"platinum_highlight_threshold")
+        value=str(body.platinum_highlight_threshold)
+        if record: record.value=value
+        else: session.add(AppMetadata(key="platinum_highlight_threshold",value=value))
+        return body.model_dump()
 
 @app.get("/api/v1/catalog/relics")
 def relics(era:str|None=None):

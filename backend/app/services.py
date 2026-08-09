@@ -55,12 +55,22 @@ def session_view(session: Session, session_id: str) -> dict:
             if not item: continue
             inventory=session.get(Inventory,item.id)
             recipes=session.exec(select(Recipe).where(Recipe.component_id==item.id)).all()
+            required=sum(recipe.quantity for recipe in recipes)
             progress=[session.get(EquipmentProgress,recipe.equipment_id) for recipe in recipes]
+            equipment_ids={recipe.equipment_id for recipe in recipes}
+            ready=[]
+            for equipment_id in equipment_ids:
+                requirements=session.exec(select(Recipe).where(Recipe.equipment_id==equipment_id)).all()
+                ready.append(bool(requirements) and all(
+                    (owned:=session.get(Inventory,requirement.component_id)) is not None
+                    and owned.quantity>=requirement.quantity for requirement in requirements))
             rewards.append({"id":item.id,"name":item.name,"rarity":link.rarity,"ducats":item.ducats,
                 "market_median":item.market_median,"market_window":item.market_window,
                 "availability":item.availability,"owned":inventory.quantity if inventory else 0,
-                "required":sum(recipe.quantity for recipe in recipes),
-                "mastered":bool(progress) and all(row and row.mastered for row in progress)})
+                "required":required,
+                "part_owned":required>0 and inventory is not None and inventory.quantity>=required,
+                "mastered":bool(progress) and all(row and row.mastered for row in progress),
+                "set_complete":any(ready)})
         rarity_order={"rare":0,"uncommon":1,"common":2}
         rewards.sort(key=lambda reward:(rarity_order.get(reward["rarity"],3),reward["name"]))
         columns.append({**relic.model_dump(),"rewards":rewards})
