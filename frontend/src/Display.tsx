@@ -28,7 +28,10 @@ export function Display(){
  const numbered=picker?.letter?pickerRelics.filter(r=>r.code.startsWith(picker.letter!)).sort((a,b)=>Number(a.code.slice(picker.letter!.length))-Number(b.code.slice(picker.letter!.length))):[];
 
  function chooseRelic(id:string){if(!picker)return;setSlots(current=>current.map((value,index)=>index===picker.slot?id:value));setPicker(null)}
- function chooseMissionEra(era:string){if(era!==missionEra)setSlots([null,null,null,null]);setMissionEra(era);setPicker(null)}
+ function chooseMissionEra(era:string){
+  if(era!==missionEra&&era!=='Omni')setSlots(current=>current.map(id=>id&&relics.find(relic=>relic.id===id)?.era===era?id:null));
+  setMissionEra(era);setPicker(null)
+ }
  async function updatePrices(current:RunSession){setLoadingPrices(true);try{const item_ids=[...new Set(current.columns.flatMap(column=>column.rewards.map(reward=>reward.id)))];await post('/market/prices',{item_ids});setRun(await api<RunSession>(`/runs/${current.id}`))}catch(e){setError((e as Error).message)}finally{setLoadingPrices(false)}}
  async function begin(){const ids=slots.filter(Boolean) as string[];if(!ids.length)return;try{const current=await post<RunSession>('/runs',{relic_ids:ids});setRun(current);setChosen(null);setTx(null);void updatePrices(current)}catch(e){setError((e as Error).message)}}
  async function confirm(){if(!run||!chosen||lock.current)return;lock.current=true;try{const result=await post<{transaction_id:string}>(`/runs/${run.id}/confirm`,{item_id:chosen.id,idempotency_key:`${run.id}-${chosen.id}`});setTx(result.transaction_id);setRun({...run,state:'confirmed',chosen_item_id:chosen.id})}catch(e){setError((e as Error).message)}finally{lock.current=false}}
