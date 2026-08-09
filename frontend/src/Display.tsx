@@ -7,7 +7,7 @@ type Picker={slot:number;era:string|null;letter:string|null}|null;
 
 export function Display(){
  const [relics,setRelics]=useState<Relic[]>([]),[slots,setSlots]=useState<(string|null)[]>([null,null,null,null]);
- const [picker,setPicker]=useState<Picker>(null),[loadingCatalog,setLoadingCatalog]=useState(false);
+ const [picker,setPicker]=useState<Picker>(null),[missionEra,setMissionEra]=useState<string|null>(null),[loadingCatalog,setLoadingCatalog]=useState(false);
  const [run,setRun]=useState<RunSession|null>(null),[loadingPrices,setLoadingPrices]=useState(false),[platinumThreshold,setPlatinumThreshold]=useState(20),[chosen,setChosen]=useState<Reward|null>(null),[tx,setTx]=useState<string|null>(null),[error,setError]=useState('');
  const lock=useRef(false);
 
@@ -28,6 +28,7 @@ export function Display(){
  const numbered=picker?.letter?pickerRelics.filter(r=>r.code.startsWith(picker.letter!)).sort((a,b)=>Number(a.code.slice(picker.letter!.length))-Number(b.code.slice(picker.letter!.length))):[];
 
  function chooseRelic(id:string){if(!picker)return;setSlots(current=>current.map((value,index)=>index===picker.slot?id:value));setPicker(null)}
+ function chooseMissionEra(era:string){if(era!==missionEra)setSlots([null,null,null,null]);setMissionEra(era);setPicker(null)}
  async function updatePrices(current:RunSession){setLoadingPrices(true);try{const item_ids=[...new Set(current.columns.flatMap(column=>column.rewards.map(reward=>reward.id)))];await post('/market/prices',{item_ids});setRun(await api<RunSession>(`/runs/${current.id}`))}catch(e){setError((e as Error).message)}finally{setLoadingPrices(false)}}
  async function begin(){const ids=slots.filter(Boolean) as string[];if(!ids.length)return;try{const current=await post<RunSession>('/runs',{relic_ids:ids});setRun(current);setChosen(null);setTx(null);void updatePrices(current)}catch(e){setError((e as Error).message)}}
  async function confirm(){if(!run||!chosen||lock.current)return;lock.current=true;try{const result=await post<{transaction_id:string}>(`/runs/${run.id}/confirm`,{item_id:chosen.id,idempotency_key:`${run.id}-${chosen.id}`});setTx(result.transaction_id);setRun({...run,state:'confirmed',chosen_item_id:chosen.id})}catch(e){setError((e as Error).message)}finally{lock.current=false}}
@@ -36,13 +37,13 @@ export function Display(){
  function endMission(){clearRelics();setRun(null);setChosen(null);setTx(null)}
 
  if(!run)return <main className="display picker">
-  <header><div><span className="eyebrow">VOID FISSURE</span><h1>Squad Relics</h1></div>{loadingCatalog&&<span>Updating relic catalog…</span>}<div className="display-header-actions"><button disabled={!slots.some(Boolean)} onClick={clearRelics}>Clear relics</button><a href="/manage">Manage</a></div></header>
+  <header><div><span className="eyebrow">VOID FISSURE</span><h1>Squad Relics</h1></div><nav className="mission-era-tabs" aria-label="Relic mission type">{[...eras,'Omni'].map(era=><button className={missionEra===era?'active':''} aria-pressed={missionEra===era} onClick={()=>chooseMissionEra(era)} key={era}>{era}</button>)}</nav>{loadingCatalog&&<span>Updating relic catalog…</span>}<div className="display-header-actions"><button disabled={!slots.some(Boolean)} onClick={clearRelics}>Clear relics</button><a href="/manage">Manage</a></div></header>
   {error&&<div className="error" onClick={()=>setError('')}>{error} ×</div>}
-  <div className="chosen-slots">{slots.map((id,i)=>{const relic=selectedRelics[i];return <button className={`${relic?'filled':''} ${relic?.availability==='vaulted'?'is-vaulted':''}`} onClick={()=>setPicker({slot:i,era:relic?.era??null,letter:null})} key={i}><small>SQUAD {i+1}</small>{relic?<><b>{relic.era}</b><strong>{relic.code}</strong><em>{relic.availability}</em></>:<span>Tap to choose</span>}</button>})}</div>
-  <div className="picker-hint">Tap a squad slot, then choose era → letter → number.</div>
+  <div className="chosen-slots">{slots.map((id,i)=>{const relic=selectedRelics[i];return <button className={`${relic?'filled':''} ${relic?.availability==='vaulted'?'is-vaulted':''}`} onClick={()=>setPicker({slot:i,era:missionEra&&missionEra!=='Omni'?missionEra:relic?.era??null,letter:null})} key={i}><small>SQUAD {i+1}</small>{relic?<><b>{relic.era}</b><strong>{relic.code}</strong><em>{relic.availability}</em></>:<span>Tap to choose</span>}</button>})}</div>
+  <div className="picker-hint">{missionEra==='Omni'?'Omni mission selected — choose era → letter → number for each squad slot.':missionEra?`${missionEra} mission selected — tap a squad slot, then choose letter → number.`:'Choose a mission type above, then tap a squad slot.'}</div>
   <button className="begin" disabled={!slots.some(Boolean)} onClick={begin}>Show Rewards</button>
   {picker&&<div className="relic-picker-modal">
-   <div className="modal-head"><button onClick={()=>picker.letter?setPicker({...picker,letter:null}):picker.era?setPicker({...picker,era:null}):setPicker(null)}>← Back</button><div><span className="eyebrow">SQUAD {picker.slot+1}</span><h2>{picker.letter?`${picker.era} ${picker.letter}…`:picker.era?`${picker.era}: choose letter`:'Choose era'}</h2></div><button onClick={()=>{setSlots(s=>s.map((v,i)=>i===picker.slot?null:v));setPicker(null)}}>Clear</button></div>
+   <div className="modal-head"><button onClick={()=>picker.letter?setPicker({...picker,letter:null}):missionEra==='Omni'&&picker.era?setPicker({...picker,era:null}):missionEra?setPicker(null):picker.era?setPicker({...picker,era:null}):setPicker(null)}>← Back</button><div><span className="eyebrow">SQUAD {picker.slot+1}</span><h2>{picker.letter?`${picker.era} ${picker.letter}…`:picker.era?`${picker.era}: choose letter`:'Choose era'}</h2></div><button onClick={()=>{setSlots(s=>s.map((v,i)=>i===picker.slot?null:v));setPicker(null)}}>Clear</button></div>
    {!picker.era&&<div className="touch-options eras">{eras.map(era=><button disabled={!relics.some(r=>r.era===era)} onClick={()=>setPicker({...picker,era})} key={era}>{era}<small>{relics.filter(r=>r.era===era).length} relics</small></button>)}</div>}
    {picker.era&&!picker.letter&&<div className="touch-options letters">{letters.map(letter=><button onClick={()=>setPicker({...picker,letter})} key={letter}>{letter}<small>{pickerRelics.filter(r=>r.code.startsWith(letter)).length}</small></button>)}</div>}
    {picker.letter&&<div className="touch-options numbers">{numbered.map(relic=><button className={relic.availability==='vaulted'?'is-vaulted':''} onClick={()=>chooseRelic(relic.id)} key={relic.id}><small>{relic.era} {picker.letter}</small>{relic.code.slice(picker.letter!.length)}<em>{relic.availability}</em></button>)}</div>}
