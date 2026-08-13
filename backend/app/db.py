@@ -67,7 +67,6 @@ class Inventory(SQLModel, table=True):
 class EquipmentProgress(SQLModel, table=True):
     __tablename__ = "equipment_progress"
     equipment_id: str = Field(primary_key=True, foreign_key="equipment.id")
-    owned: bool = False
     mastered: bool = False
 
 
@@ -132,9 +131,9 @@ def initialize() -> None:
     with session_scope() as session:
         metadata = session.get(AppMetadata, "schema_version")
         if metadata:
-            metadata.value = "4"
+            metadata.value = "5"
         else:
-            session.add(AppMetadata(key="schema_version", value="4"))
+            session.add(AppMetadata(key="schema_version", value="5"))
         seed(session)
 
 

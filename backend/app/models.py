@@ -9,7 +9,6 @@ class QuantityChange(BaseModel):
 
 
 class ProgressChange(BaseModel):
-    owned: bool | None = None
     mastered: bool | None = None
 
 

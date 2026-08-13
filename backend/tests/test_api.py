@@ -1,5 +1,6 @@
 def test_collection_recipe_status(client):
     data = client.get("/api/v1/collection").json()[0]
+    assert "owned" not in data
     assert data["missing_count"] == 4
     assert data["ready"] is False
 

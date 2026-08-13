@@ -32,7 +32,7 @@ def collection(session: Session) -> list[dict]:
         ready = all(part["owned"] >= part["required"] for part in parts)
         result.append({"id":item.id,"name":item.name,"availability":item.availability,
             "type":item.kind,
-            "founder_exclusive":equipment.founder_exclusive,"owned":progress.owned,
+            "founder_exclusive":equipment.founder_exclusive,
             "mastered":progress.mastered,
             "parts":parts,"ready":ready,
             "missing_count":sum(max(0,p["required"]-p["owned"]) for p in parts),
