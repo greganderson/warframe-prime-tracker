@@ -13,20 +13,24 @@ from .db import (Equipment, EquipmentProgress, Inventory, InventoryTransaction,
 
 def collection(session: Session) -> list[dict]:
     result = []
+    items = {item.id: item for item in session.exec(select(Item)).all()}
+    progress_rows = {row.equipment_id: row for row in session.exec(select(EquipmentProgress)).all()}
+    owned = {row.item_id: row.quantity for row in session.exec(select(Inventory)).all()}
+    recipes_by_equipment: dict[str, list[Recipe]] = {}
+    for recipe in session.exec(select(Recipe)).all():
+        recipes_by_equipment.setdefault(recipe.equipment_id, []).append(recipe)
     equipment_rows = session.exec(select(Equipment).order_by(Equipment.id)).all()
     for equipment in equipment_rows:
-        item = session.get(Item, equipment.id)
-        progress = session.get(EquipmentProgress, equipment.id)
+        item = items.get(equipment.id)
+        progress = progress_rows.get(equipment.id)
         if not item or not progress:
             continue
         parts = []
-        recipes = session.exec(select(Recipe).where(Recipe.equipment_id == equipment.id)).all()
-        for recipe in recipes:
-            component = session.get(Item, recipe.component_id)
-            inventory = session.get(Inventory, recipe.component_id)
+        for recipe in recipes_by_equipment.get(equipment.id, []):
+            component = items.get(recipe.component_id)
             if component:
                 parts.append({"id":component.id,"name":component.name,"required":recipe.quantity,
-                    "owned":inventory.quantity if inventory else 0,"ducats":component.ducats,
+                    "owned":owned.get(component.id, 0),"ducats":component.ducats,
                     "market_median":component.market_median,"availability":component.availability})
         parts.sort(key=lambda part: part["name"])
         ready = all(part["owned"] >= part["required"] for part in parts)
@@ -38,6 +42,18 @@ def collection(session: Session) -> list[dict]:
             "missing_count":sum(max(0,p["required"]-p["owned"]) for p in parts),
             "surplus_sets":min((p["owned"]//p["required"] for p in parts),default=0)})
     return sorted(result, key=lambda row: row["name"])
+
+
+def build_equipment(session: Session, equipment_id: str) -> dict:
+    if not session.get(Equipment, equipment_id): raise HTTPException(404, "Equipment not found")
+    recipes = session.exec(select(Recipe).where(Recipe.equipment_id == equipment_id)).all()
+    inventories = {recipe.component_id: session.get(Inventory, recipe.component_id) for recipe in recipes}
+    if not recipes or any(not inventories[r.component_id] or inventories[r.component_id].quantity < r.quantity for r in recipes):
+        raise HTTPException(409, "Not enough parts to build this set")
+    for recipe in recipes:
+        inventory = inventories[recipe.component_id]
+        inventory.quantity -= recipe.quantity; inventory.verified_at = now()
+    return {"equipment_id": equipment_id, "built": True}
 
 
 def session_view(session: Session, session_id: str) -> dict:

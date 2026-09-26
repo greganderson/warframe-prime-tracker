@@ -60,3 +60,15 @@ def test_platinum_highlight_threshold_is_shared_and_validated(client):
 def test_inventory_cannot_be_negative(client):
     response = client.patch("/api/v1/inventory/boar-prime-barrel", json={"delta":-1})
     assert response.status_code == 409
+
+
+def test_build_set_consumes_required_parts(client):
+    assert client.post("/api/v1/equipment/boar-prime/build").status_code == 409
+    for item_id in ("boar-prime-blueprint", "boar-prime-barrel",
+                    "boar-prime-receiver", "boar-prime-stock"):
+        client.patch(f"/api/v1/inventory/{item_id}", json={"delta":1})
+    client.patch("/api/v1/inventory/boar-prime-barrel", json={"delta":1})
+    assert client.post("/api/v1/equipment/boar-prime/build").status_code == 200
+    boar = client.get("/api/v1/collection").json()[0]
+    assert boar["missing_count"] == 3
+    assert {p["id"]:p["owned"] for p in boar["parts"]}["boar-prime-barrel"] == 1

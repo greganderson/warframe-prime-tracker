@@ -19,7 +19,7 @@ from .models import (PriceRequest, ProgressChange, QuantityChange, RewardConfirm
                      RunCreate, SettingsChange)
 from .market import refresh_market_prices
 from .public_export import CatalogRefreshError, refresh_full_catalog
-from .services import collection, confirm_reward, create_session, session_view, undo, utc_now
+from .services import build_equipment, collection, confirm_reward, create_session, session_view, undo, utc_now
 
 
 @asynccontextmanager
@@ -96,6 +96,10 @@ def change_progress(equipment_id:str,body:ProgressChange):
         if not progress: raise HTTPException(404,"Equipment not found")
         for key,value in updates.items(): setattr(progress,key,value)
         return {"equipment_id":equipment_id,**updates}
+
+@app.post("/api/v1/equipment/{equipment_id}/build")
+def build_set(equipment_id:str):
+    with session_scope() as session: return build_equipment(session,equipment_id)
 
 @app.post("/api/v1/runs",status_code=201)
 def start_run(body:RunCreate):
