@@ -6,3 +6,5 @@ export interface Relic {id:string;era:string;code:string;availability:Availabili
 export interface Reward extends Part {rarity:'common'|'uncommon'|'rare';market_window:string|null;mastered:boolean;set_complete:boolean;part_owned:boolean}
 export interface RunColumn extends Relic {rewards:Reward[]}
 export interface RunSession {id:string;state:'open'|'confirmed';chosen_item_id:string|null;columns:RunColumn[]}
+export interface VoiceRelic {heard:string;relic_id:string|null;options:string[]}
+export interface VoiceMessage {text?:string;relics?:VoiceRelic[];done?:boolean;error?:string}

@@ -6,13 +6,15 @@ import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from sqlmodel import delete, select
 
 from . import db as database
+from . import voice
 from .db import (AppMetadata, EquipmentProgress, Inventory, Item, MODEL_BY_TABLE,
                  MODELS, Relic, Session, engine, now, session_scope)
 from .models import (PriceRequest, ProgressChange, QuantityChange, RewardConfirm,
@@ -116,6 +118,33 @@ def confirm(session_id:str,body:RewardConfirm):
 @app.post("/api/v1/transactions/{transaction_id}/undo")
 def undo_transaction(transaction_id:str):
     with session_scope() as session: undo(session,transaction_id); return {"undone":True}
+
+@app.get("/api/v1/voice/status")
+def voice_status(): return {"available":voice.available()}
+
+@app.websocket("/api/v1/voice")
+async def voice_dictation(websocket:WebSocket,rate:float=16000,era:str|None=None):
+    """Stream 16-bit mono PCM in; send partial transcripts and parsed relics out. Send "stop" to finish."""
+    await websocket.accept()
+    if not voice.available():
+        await websocket.send_json({"error":"Voice model is not installed"}); await websocket.close(); return
+    with Session(engine) as session:
+        relics=[relic.model_dump() for relic in session.exec(select(Relic)).all()]
+    recognizer=await run_in_threadpool(voice.recognizer,rate); segments:list[str]=[]
+    def update(partial:str=""):
+        text=" ".join(filter(None,[*segments,partial])); return {"text":text,"relics":voice.parse(text,relics,era)}
+    try:
+        while True:
+            message=await websocket.receive()
+            if message["type"]=="websocket.disconnect": return
+            if message.get("text")=="stop":
+                segments.append(json.loads(await run_in_threadpool(recognizer.FinalResult))["text"])
+                await websocket.send_json({**update(),"done":True}); await websocket.close(); return
+            if not message.get("bytes"): continue
+            if await run_in_threadpool(recognizer.AcceptWaveform,message["bytes"]):
+                segments.append(json.loads(recognizer.Result())["text"]); await websocket.send_json(update())
+            else: await websocket.send_json(update(json.loads(recognizer.PartialResult())["partial"]))
+    except WebSocketDisconnect: return
 
 def _model_rows(session:Session,model:type)->list[dict]:
     return [row.model_dump(mode="json") for row in session.exec(select(model)).all()]

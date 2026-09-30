@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {api,post} from './api';
-import type {Relic,Reward,RunSession} from './types';
+import type {Relic,Reward,RunSession,VoiceMessage,VoiceRelic} from './types';
+import {startDictation,voiceSupported} from './voice';
 
 const eras=['Lith','Meso','Neo','Axi'];
 type Picker={slot:number;era:string|null;letter:string|null}|null;
@@ -10,8 +11,11 @@ export function Display(){
  const [picker,setPicker]=useState<Picker>(null),[missionEra,setMissionEra]=useState<string|null>(null),[loadingCatalog,setLoadingCatalog]=useState(false);
  const [run,setRun]=useState<RunSession|null>(null),[loadingPrices,setLoadingPrices]=useState(false),[platinumThreshold,setPlatinumThreshold]=useState(20),[chosen,setChosen]=useState<Reward|null>(null),[tx,setTx]=useState<string|null>(null),[error,setError]=useState('');
  const lock=useRef(false);
+ const [voiceReady,setVoiceReady]=useState(false),[listening,setListening]=useState(false),[heard,setHeard]=useState(''),[voiceChoices,setVoiceChoices]=useState<(VoiceRelic&{slot:number})[]>([]);
+ const stopVoice=useRef<(()=>void)|null>(null),autoStop=useRef<number|null>(null);
 
  useEffect(()=>{void loadCatalog();void api<{platinum_highlight_threshold:number}>('/settings').then(value=>setPlatinumThreshold(value.platinum_highlight_threshold)).catch(e=>setError(e.message))},[]);
+ useEffect(()=>{if(voiceSupported())void api<{available:boolean}>('/voice/status').then(value=>setVoiceReady(value.available)).catch(()=>{});return ()=>stopVoice.current?.()},[]);
  async function loadCatalog(){
   try{
    const current=await api<Relic[]>('/catalog/relics'); setRelics(current);
@@ -27,7 +31,7 @@ export function Display(){
  const letters=useMemo(()=>[...new Set(pickerRelics.map(r=>r.code.match(/^[A-Z]+/)?.[0]).filter(Boolean) as string[])].sort(),[pickerRelics]);
  const numbered=picker?.letter?pickerRelics.filter(r=>r.code.startsWith(picker.letter!)).sort((a,b)=>Number(a.code.slice(picker.letter!.length))-Number(b.code.slice(picker.letter!.length))):[];
 
- function chooseRelic(id:string){if(!picker)return;setSlots(current=>current.map((value,index)=>index===picker.slot?id:value));setPicker(null)}
+ function chooseRelic(id:string){if(!picker)return;setSlots(current=>current.map((value,index)=>index===picker.slot?id:value));setVoiceChoices(current=>current.filter(choice=>choice.slot!==picker.slot));setPicker(null)}
  function chooseMissionEra(era:string){
   if(era!==missionEra&&era!=='Omni')setSlots(current=>current.map(id=>id&&relics.find(relic=>relic.id===id)?.era===era?id:null));
   setMissionEra(era);setPicker(null)
@@ -36,14 +40,35 @@ export function Display(){
  async function begin(){const ids=slots.filter(Boolean) as string[];if(!ids.length)return;try{const current=await post<RunSession>('/runs',{relic_ids:ids});setRun(current);setChosen(null);setTx(null);void updatePrices(current)}catch(e){setError((e as Error).message)}}
  async function confirm(){if(!run||!chosen||lock.current)return;lock.current=true;try{const result=await post<{transaction_id:string}>(`/runs/${run.id}/confirm`,{item_id:chosen.id,idempotency_key:`${run.id}-${chosen.id}`});setTx(result.transaction_id);setRun({...run,state:'confirmed',chosen_item_id:chosen.id})}catch(e){setError((e as Error).message)}finally{lock.current=false}}
  async function undo(){if(!tx)return;await post(`/transactions/${tx}/undo`);setRun(run?{...run,state:'open',chosen_item_id:null}:null);setChosen(null);setTx(null)}
- function clearRelics(){setSlots([null,null,null,null]);setPicker(null)}
+ function clearRelics(){setSlots([null,null,null,null]);setPicker(null);setVoiceChoices([])}
+ function applyVoice(results:VoiceRelic[]){
+  const spoken=results.slice(0,4);
+  setSlots([0,1,2,3].map(i=>spoken[i]?.relic_id??null));
+  setVoiceChoices(spoken.map((result,slot)=>({...result,slot})).filter(result=>!result.relic_id));
+  // Keep streaming briefly so a trailing word ("twenty ... one") still reaches the recognizer.
+  if(spoken.length===4&&!autoStop.current)autoStop.current=window.setTimeout(()=>stopVoice.current?.(),700);
+ }
+ function onVoice(message:VoiceMessage){
+  if(message.error){setError(message.error);setListening(false);stopVoice.current=null;window.clearTimeout(autoStop.current??undefined);autoStop.current=null;return}
+  if(message.relics){setHeard(message.text??'');if(message.relics.length)applyVoice(message.relics)}
+  if(message.done){setListening(false);stopVoice.current=null;window.clearTimeout(autoStop.current??undefined);autoStop.current=null}
+ }
+ async function toggleVoice(){
+  if(stopVoice.current){stopVoice.current();return}
+  setHeard('');setVoiceChoices([]);setPicker(null);
+  try{stopVoice.current=await startDictation(missionEra,onVoice);setListening(true)}
+  catch(e){setError(`Microphone unavailable: ${(e as Error).message}`)}
+ }
+ function chooseVoiceOption(slot:number,id:string){setSlots(current=>current.map((value,index)=>index===slot?id:value));setVoiceChoices(current=>current.filter(choice=>choice.slot!==slot))}
+ const relicName=(id:string)=>{const relic=relics.find(r=>r.id===id);return relic?`${relic.era} ${relic.code}`:id};
  function endMission(){clearRelics();setRun(null);setChosen(null);setTx(null)}
 
  if(!run)return <main className="display picker">
-  <header><div><span className="eyebrow">VOID FISSURE</span><h1>Squad Relics</h1></div><nav className="mission-era-tabs" aria-label="Relic mission type">{[...eras,'Omni'].map(era=><button className={missionEra===era?'active':''} aria-pressed={missionEra===era} onClick={()=>chooseMissionEra(era)} key={era}>{era}</button>)}</nav>{loadingCatalog&&<span>Updating relic catalog…</span>}<div className="display-header-actions"><button disabled={!slots.some(Boolean)} onClick={clearRelics}>Clear relics</button><a href="/manage">Manage</a></div></header>
+  <header><div><span className="eyebrow">VOID FISSURE</span><h1>Squad Relics</h1></div><nav className="mission-era-tabs" aria-label="Relic mission type">{[...eras,'Omni'].map(era=><button className={missionEra===era?'active':''} aria-pressed={missionEra===era} onClick={()=>chooseMissionEra(era)} key={era}>{era}</button>)}</nav>{loadingCatalog&&<span>Updating relic catalog…</span>}<div className="display-header-actions">{voiceReady&&<button className={`voice-button ${listening?'listening':''}`} aria-pressed={listening} onClick={()=>void toggleVoice()}>{listening?'■ Stop':'🎤 Speak relics'}</button>}<button disabled={!slots.some(Boolean)} onClick={clearRelics}>Clear relics</button><a href="/manage">Manage</a></div></header>
   {error&&<div className="error" onClick={()=>setError('')}>{error} ×</div>}
   <div className="chosen-slots">{slots.map((id,i)=>{const relic=selectedRelics[i];return <button className={`${relic?'filled':''} ${relic?.availability==='vaulted'?'is-vaulted':''}`} onClick={()=>setPicker({slot:i,era:missionEra&&missionEra!=='Omni'?missionEra:relic?.era??null,letter:null})} key={i}><small>SQUAD {i+1}</small>{relic?<><b>{relic.era}</b><strong>{relic.code}</strong><em>{relic.availability}</em></>:<span>Tap to choose</span>}</button>})}</div>
-  <div className="picker-hint">{missionEra==='Omni'?'Omni mission selected — choose era → letter → number for each squad slot.':missionEra?`${missionEra} mission selected — tap a squad slot, then choose letter → number.`:'Choose a mission type above, then tap a squad slot.'}</div>
+  {voiceChoices.length>0&&<div className="voice-choices">{voiceChoices.map(choice=><div key={choice.slot}><span>Squad {choice.slot+1} · heard “{choice.heard}”</span>{choice.options.length?choice.options.map(id=><button onClick={()=>chooseVoiceOption(choice.slot,id)} key={id}>{relicName(id)}</button>):<em>No such relic — tap the slot to choose</em>}</div>)}</div>}
+  <div className="picker-hint">{listening?(heard?`Heard: ${heard}`:'Listening… say relics like “Lith B4, Meso C2”.'):missionEra==='Omni'?'Omni mission selected — choose era → letter → number for each squad slot.':missionEra?`${missionEra} mission selected — tap a squad slot, then choose letter → number.`:'Choose a mission type above, then tap a squad slot.'}</div>
   <button className="begin" disabled={!slots.some(Boolean)} onClick={begin}>Show Rewards</button>
   {picker&&<div className="relic-picker-modal">
    <div className="modal-head"><button onClick={()=>picker.letter?setPicker({...picker,letter:null}):missionEra==='Omni'&&picker.era?setPicker({...picker,era:null}):missionEra?setPicker(null):picker.era?setPicker({...picker,era:null}):setPicker(null)}>← Back</button><div><span className="eyebrow">SQUAD {picker.slot+1}</span><h2>{picker.letter?`${picker.era} ${picker.letter}…`:picker.era?`${picker.era}: choose letter`:'Choose era'}</h2></div><button onClick={()=>{setSlots(s=>s.map((v,i)=>i===picker.slot?null:v));setPicker(null)}}>Clear</button></div>
