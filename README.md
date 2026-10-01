@@ -10,7 +10,7 @@ I've long wanted an app that would help with tracking my prime parts. I've start
 
 Now fast forward a couple years to the last couple months. I went to class one day and one of my students showed me how he got a small touch screen to manage some home server stuff. I've seen those before, and they've always seemed really cool, but I've never had a use for one myself. Then I realized that could be just what I needed for prime tracking. I got a touch screen, then let AI build an app to run in kiosk mode that would track prime items for me. I'd just put in what relics were being cracked that mission, then it would go track down current platinum prices, see what I currently owned, then show me a summarized rewards screen for me (including if any of the relics being cracked are vaulted) so I could decide what I wanted _before_ the round was over. One it was over, I would make my selection, then tap that option on the touch screen, which would record it for me.
 
-It was a dream come true right from the beginning. One thing I noticed was in some missions like omni fissure void cascade, putting in everyone's relics quickly while trying not to die was...hard. That's when the voice control feature was born. Now I can tap a button, then say what relics everyone has, and they are populated almost immediately. It's _so easy_.
+It was a dream come true right from the beginning. One thing I noticed was in some missions like omni fissure void cascade, putting in everyone's relics quickly while trying not to die was...hard. That's when the voice control feature was born. Now I can tap a button, say what relics everyone has, and they are populated almost immediately. It's _so easy_.
 
 "But surely it can't be _that_ good, what are the drawbacks?"
 
