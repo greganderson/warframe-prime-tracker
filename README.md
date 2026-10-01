@@ -2,11 +2,11 @@
 
 ## Table of Contents
 
-- [Food-blog Description][#food-blog-description]
-- [AI's Description][#ais-description]
-  - [Development][#development]
-  - [Raspberry Pi][#raspberry-pi]
-  - [Data safety][#data-safety]
+- [Food-blog Description](#food-blog-description)
+- [AI's Description](#ais-description)
+  - [Development](#development)
+  - [Raspberry Pi](#raspberry-pi)
+  - [Data safety](#data-safety)
 
 ## Food-blog Description
 
