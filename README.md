@@ -1,5 +1,13 @@
 # Warframe Prime Tracker
 
+## Table of Contents
+
+- [Food-blog Description][#food-blog-description]
+- [AI's Description][#ais-description]
+  - [Development][#development]
+  - [Raspberry Pi][#raspberry-pi]
+  - [Data safety][#data-safety]
+
 ## Food-blog Description
 
 As a long-time warframe player, I've always struggled with keeping track of what prime parts I have and what I still need. There were improvements made to the rewards screen for relic missions, but it still wasn't what I needed. It shows if you have a copy of that part and if you have one built, but what if I need two? What if I built the prime item, and now don't need the part on the reward screen? Should I get it for ducats/platinum, or do I need it for a prime item I don't have yet?
