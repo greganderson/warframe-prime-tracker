@@ -1,5 +1,7 @@
 # Warframe Prime Tracker
 
+A tool that runs on a small touch screen to help track prime items in [Warframe][https://www.warframe.com/en].
+
 ## Table of Contents
 
 - [Food-blog Description](#food-blog-description)
