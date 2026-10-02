@@ -1,5 +1,5 @@
 export type AvailabilityStatus='farmable'|'resurgence'|'special'|'vaulted'|'exclusive'|'unknown';
-export interface Part {id:string;name:string;required:number;owned:number;ducats:number;market_median:number|null;availability:AvailabilityStatus}
+export interface Part {id:string;name:string;required:number;owned:number;ducats:number;market_median:number|null;market_updated_at:string|null;availability:AvailabilityStatus}
 export type EquipmentType='warframe'|'archwing'|'primary'|'secondary'|'melee'|'archgun'|'companion'|'companion_weapon'|'equipment';
 export interface Equipment {id:string;name:string;type:EquipmentType;availability:AvailabilityStatus;mastered:number;ready:boolean;missing_count:number;surplus_sets:number;parts:Part[]}
 export interface Relic {id:string;era:string;code:string;availability:AvailabilityStatus}

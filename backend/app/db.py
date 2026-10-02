@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import event
+from sqlalchemy import event, inspect
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 DB_PATH = Path(os.getenv("TRACKER_DB", Path(__file__).parents[2] / "data" / "tracker.db"))
@@ -25,6 +25,7 @@ class Item(SQLModel, table=True):
     ducats: int = 0
     market_median: float | None = None
     market_window: str | None = None
+    market_updated_at: str | None = None
     availability: str = "unknown"
     updated_at: str = Field(default_factory=now)
 
@@ -128,6 +129,7 @@ def session_scope() -> Iterator[Session]:
 
 def initialize() -> None:
     SQLModel.metadata.create_all(engine)
+    _add_missing_item_columns()
     with session_scope() as session:
         metadata = session.get(AppMetadata, "schema_version")
         if metadata:
@@ -135,6 +137,14 @@ def initialize() -> None:
         else:
             session.add(AppMetadata(key="schema_version", value="5"))
         seed(session)
+
+
+def _add_missing_item_columns() -> None:
+    """Add columns introduced after a database was created; create_all only makes missing tables."""
+    columns = {column["name"] for column in inspect(engine).get_columns("items")}
+    if "market_updated_at" not in columns:
+        with engine.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE items ADD COLUMN market_updated_at TEXT")
 
 
 def seed(session: Session) -> None:

@@ -19,13 +19,17 @@ from .db import (AppMetadata, EquipmentProgress, Inventory, Item, MODEL_BY_TABLE
                  MODELS, Relic, Session, engine, now, session_scope)
 from .models import (PriceRequest, ProgressChange, QuantityChange, RewardConfirm,
                      RunCreate, SettingsChange)
+from . import market
 from .market import refresh_market_prices
 from .public_export import CatalogRefreshError, refresh_full_catalog
 from .services import build_equipment, collection, confirm_reward, create_session, session_view, undo, utc_now
 
 
 @asynccontextmanager
-async def lifespan(_:FastAPI): database.initialize(); yield
+async def lifespan(_:FastAPI):
+    database.initialize(); market.crawler.start()
+    yield
+    market.crawler.stop()
 
 app=FastAPI(title="Warframe Prime Tracker",version="1.0.0",lifespan=lifespan)
 app.add_middleware(CORSMiddleware,allow_origins=["http://localhost:5173"],allow_methods=["*"],allow_headers=["*"])
@@ -76,6 +80,9 @@ def relic_catalog_status():
 def market_prices(body:PriceRequest):
     try: return refresh_market_prices(body.item_ids)
     except Exception as error: raise HTTPException(502,f"Market refresh failed: {error}")
+
+@app.get("/api/v1/market/status")
+def market_status(): return market.status()
 
 @app.get("/api/v1/collection")
 def get_collection():

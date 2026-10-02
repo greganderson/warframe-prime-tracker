@@ -31,7 +31,8 @@ def collection(session: Session) -> list[dict]:
             if component:
                 parts.append({"id":component.id,"name":component.name,"required":recipe.quantity,
                     "owned":owned.get(component.id, 0),"ducats":component.ducats,
-                    "market_median":component.market_median,"availability":component.availability})
+                    "market_median":component.market_median,"market_updated_at":component.market_updated_at,
+                    "availability":component.availability})
         parts.sort(key=lambda part: part["name"])
         ready = all(part["owned"] >= part["required"] for part in parts)
         result.append({"id":item.id,"name":item.name,"availability":item.availability,
@@ -82,6 +83,7 @@ def session_view(session: Session, session_id: str) -> dict:
                     and owned.quantity>=requirement.quantity for requirement in requirements))
             rewards.append({"id":item.id,"name":item.name,"rarity":link.rarity,"ducats":item.ducats,
                 "market_median":item.market_median,"market_window":item.market_window,
+                "market_updated_at":item.market_updated_at,
                 "availability":item.availability,"owned":inventory.quantity if inventory else 0,
                 "required":required,
                 "part_owned":required>0 and inventory is not None and inventory.quantity>=required,
