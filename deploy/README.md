@@ -20,8 +20,28 @@
    ```
 
    Set `VOSK_MODEL` in the service file to use a model stored elsewhere. The microphone only works in the kiosk browser on the Pi (`http://127.0.0.1`); browsers block microphone access on plain `http://` pages opened from other machines. The button is hidden when the model is missing.
-4. Install Avahi (`sudo apt install avahi-daemon`) so PCs can open `http://warframe-tracker.local:8000/manage`. If mDNS is unavailable, use the Pi's IP address shown by `hostname -I`.
-5. Configure the desktop for landscape 1280×800 and verify that USB touch maps to the HDMI display. Chromium opens `/display` automatically after login. The application fills the detected viewport, so it remains usable if Raspberry Pi OS initially chooses a different mode.
+4. Make the touchscreen behave as a touchscreen. Recent Raspberry Pi OS releases use the labwc window manager, which can pass touches to apps as mouse input; Chromium then selects text when you drag instead of scrolling. Check with `grep -ri touch ~/.config/labwc /etc/xdg/labwc`. If you see `mouseEmulation="yes"`, or touch drags select text, copy `/etc/xdg/labwc/rc.xml` to `~/.config/labwc/rc.xml` if it is not there yet, then set `mouseEmulation="no"` on the `<touch>` line. If there is no `<touch>` line, add one just before `</openbox_config>`:
+
+   ```xml
+   <touch deviceName="ILITEK ILITEK-TP" mouseEmulation="no" />
+   ```
+
+   `ILITEK ILITEK-TP` is the TS-10's touch controller; `sudo libinput list-devices` (from `libinput-tools`) lists device names. Reboot afterwards. Dragging should then scroll and a long press selects text.
+5. Install Avahi (`sudo apt install avahi-daemon`) so PCs can open `http://warframe-tracker.local:8000/manage`. If mDNS is unavailable, use the Pi's IP address shown by `hostname -I`.
+6. Configure the desktop for landscape 1280×800 and verify that USB touch maps to the HDMI display. Chromium opens `/display` automatically after login. The application fills the detected viewport, so it remains usable if Raspberry Pi OS initially chooses a different mode.
+
+## Updating
+
+```bash
+cd /opt/warframe-tracker && git pull
+cd frontend && npm ci && npm run build
+cd .. && .venv/bin/pip install -r backend/requirements.txt
+sudo systemctl restart warframe-tracker
+```
+
+The page is served with `Cache-Control: no-cache`, so the kiosk loads the new build the next time it opens or reloads a page. If `npm run build` fails, the previous build stays in place; check its output. To confirm a change reached the Pi, look for its code in `frontend/dist/assets/*.css` or `*.js`. Changes to `deploy/warframe-kiosk.desktop` take effect only after copying it to `/etc/xdg/autostart/` again and logging back in.
+
+## Security
 
 The service listens on the LAN. There is deliberately no login: keep it on a trusted home network, configure the host/router firewall appropriately, and never forward port 8000 from the internet.
 

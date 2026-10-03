@@ -203,4 +203,6 @@ if dist.exists():
     @app.get("/{path:path}")
     def spa(path:str):
         candidate=dist/path
-        return FileResponse(candidate if candidate.is_file() else dist/"index.html")
+        # index.html names the current hashed bundles; without no-cache the kiosk can keep loading an old build.
+        if candidate.is_file() and candidate.name!="index.html": return FileResponse(candidate)
+        return FileResponse(dist/"index.html",headers={"Cache-Control":"no-cache"})

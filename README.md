@@ -6,6 +6,7 @@ A tool that runs on a small touch screen to help track prime items in [Warframe]
 
 - [Food-blog Description](#food-blog-description)
 - [AI's Description](#ais-description)
+  - [Features](#features)
   - [Development](#development)
   - [Raspberry Pi](#raspberry-pi)
   - [Data safety](#data-safety)
@@ -32,6 +33,24 @@ Other than that though, yeah it's that good.
 
 A local-first Raspberry Pi dashboard for tracking Prime parts, equipment progress, and fissure rewards. Relics are selected only to populate the squad reward matrix; relic ownership is not recorded. It exposes a touch-first `1280×800` display at `/display` and a desktop management UI at `/manage`.
 
+### Features
+
+**Run mode (`/display`)**
+
+- Pick the mission's era (or Omni), then choose each squad member's relic by touch (era → letter → number) or tap **🎤 Speak relics** and say them, e.g. "Lith B4, Meso C2, Neo N9, Axi A12". Voice recognition runs offline on the Pi with [Vosk](https://alphacephei.com/vosk/), limited to relic vocabulary; slots fill as you speak and listening stops after four relics. When a letter is unclear, the screen offers the matching relics to tap.
+- The rewards screen shows every possible reward with owned/required counts, ducats, rarity, vaulted status and badges for mastered equipment, completed sets and parts you already have. Current platinum prices fill in one by one as they arrive, and prices at or above the **Highlight Platinum** threshold stand out.
+- Confirming a reward adds it to inventory; **Undo** reverses it.
+
+**Management (`/manage`)**
+
+- Search equipment and parts, filter by type and missing parts (including **Complete set**), hide mastered equipment, and sort by name, closest to complete, most missing, or **Platinum (owned)**: the market value of the parts you own.
+- Adjust part counts with − / +, mark equipment mastered, and **Build** a complete set, which subtracts one set of parts from inventory.
+- Each part shows its ducat value, platinum price and how old that price is. The filter bar shows how many prices are current.
+
+**Prices**
+
+A background task refreshes Warframe.Market prices for every tradeable part, one request every 3 seconds, owned parts first; a full pass takes about 30 minutes and prices are refreshed when older than 12 hours. The rewards screen jumps ahead of the background queue. All requests share one limiter that stays under Warframe.Market's 3 requests/second limit and backs off on errors.
+
 ### Development
 
 Requirements: Python 3.11+, Node 20+.
@@ -51,7 +70,17 @@ npm install
 npm run dev
 ```
 
-Vite proxies `/api` to port 8000. The production backend serves `frontend/dist` when built.
+Vite proxies `/api` (including the voice WebSocket) to port 8000. The production backend serves `frontend/dist` when built.
+
+Run the backend tests from the repository root with `python -m pytest`.
+
+Voice entry needs the Vosk model in `models/` (see [deploy/README.md](deploy/README.md)); without it the **Speak relics** button is hidden. Microphone access requires a secure context, so use `http://localhost` or `http://127.0.0.1` when testing it.
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `TRACKER_DB` | `data/tracker.db` | SQLite database path |
+| `VOSK_MODEL` | `models/vosk-model-small-en-us-0.15` | Voice recognition model directory |
+| `TRACKER_DISABLE_SYNC` | unset | Set to any value to turn off the background price task (the tests do this) |
 
 ### Raspberry Pi
 
@@ -61,4 +90,4 @@ See [deploy/README.md](deploy/README.md). Keep the device on a trusted private L
 
 ### Data safety
 
-The SQLite database defaults to `data/tracker.db`, uses WAL mode, and all reward confirmation changes are atomic and reversible. JSON backup/restore and CSV inventory import/export are available in the management interface. **Refresh catalog** imports every Lith, Meso, Neo, and Axi relic plus buildable Prime Warframes, Archwings, primary, secondary, melee, Archguns, and companions from Warframe's official Public Export and caches the result for offline use. The management page can filter these types, hide mastered equipment, and sort by missing parts. Run mode highlights vaulted relics and refreshes recent PC median prices from Warframe.Market. A failed refresh retains the last valid dataset.
+The SQLite database defaults to `data/tracker.db`, uses WAL mode, and all reward confirmation changes are atomic and reversible. JSON backup/restore and CSV inventory import/export are available in the management interface. **Refresh catalog** imports every Lith, Meso, Neo, and Axi relic plus buildable Prime Warframes, Archwings, primary, secondary, melee, Archguns, and companions from Warframe's official Public Export and caches the result for offline use. Run mode highlights vaulted relics. Prices are PC medians from Warframe.Market (48-hour statistics, falling back to 90 days) and each price is saved as soon as it is fetched. A failed refresh retains the last valid dataset.
